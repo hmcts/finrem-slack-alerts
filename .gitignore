@@ -1,3 +1,6 @@
+.vscode
+local.settings.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -153,3 +156,5 @@ dmypy.json
 cython_debug/
 
 .idea/
+
+.python_packages

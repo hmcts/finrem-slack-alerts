@@ -1,6 +1,8 @@
-# ET Slack Alerts
+# Finrem Slack Alerts
 
 ### A serverless Azure Function for Application Insights monitoring and alerts
+
+This project was forked from [et-slack-alerts](https://github.com/hmcts/et-slack-alerts).
 
 ## Overview
 
