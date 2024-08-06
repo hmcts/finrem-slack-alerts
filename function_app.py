@@ -1,14 +1,14 @@
-import logging
 import azure.functions as func
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-import requests
+import logging
+from urllib.parse import quote
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import base64
-from io import BytesIO
-from urllib.parse import quote
 import gzip
+from io import BytesIO
+import requests
 
 # ApplicationInsights query
 query = """
@@ -27,6 +27,8 @@ key_vault_url = "https://finrem-slack-alerts-kv.vault.azure.net/"
 
 # Authenticates using azure
 credential = DefaultAzureCredential()
+
+# Create a SecretClient to interact with the Azure Key Vault
 secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
 # Get secrets from Azure Key Vault
@@ -77,10 +79,6 @@ def get_rows_from_json(rows_as_json):
     return error_logs
 
 # Function to get the unique operation IDs from the table rows (operations often raise several exceptions)
-def get_unique_operation_ids(list_of_errors):
-    return list(set([row.operation_id for row in list_of_errors]))
-
-# Function to get the unique operation IDs from the table rows (operations often raise several exceptions)
 def unique_exceptions(all_exceptions):
     # Sort by timestamp to ensure we get the first exception for each operation
     all_exceptions.sort(key=lambda x: x.timestamp)
@@ -99,6 +97,18 @@ def unique_exceptions(all_exceptions):
                                          app_insights_resource_name, i.operation_id)
         i.azure_link = azure_link
     return unique_logs
+
+# Function to get the unique operation IDs from the table rows (operations often raise several exceptions)
+def get_unique_operation_ids(list_of_errors):
+    return list(set([row.operation_id for row in list_of_errors]))
+
+# Function to get the number of errors and unique operations
+def get_counts(rows, operation_ids):
+    return len(rows), len(operation_ids)
+
+# Function to perform further queries to get specific logs relating to a given operation ID
+def parametrise_query(operation_id):
+    return f'union traces, exceptions, requests | where operation_Id == "{operation_id}"'
 
 # Extremely ugly function to generate the Azure link to the logs for a given operation ID
 def generate_azure_link(tenant_id, subscription_id, resource_group, provider, component, operation_id):
@@ -119,14 +129,6 @@ def compress_and_encode_query(query_str):
     with gzip.GzipFile(fileobj=compressed, mode='wb') as f:
         f.write(query_str.encode('utf-8'))
     return base64.b64encode(compressed.getvalue()).decode('utf-8')
-
-# Function to perform further queries to get specific logs relating to a given operation ID
-def parametrise_query(operation_id):
-    return f'union traces, exceptions, requests | where operation_Id == "{operation_id}"'
-
-# Function to get the number of errors and unique operations
-def get_counts(rows, operation_ids):
-    return len(rows), len(operation_ids)
 
 # Function to generate the Slack message
 def generate_message(errors, error_counts):
