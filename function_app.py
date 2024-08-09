@@ -23,7 +23,7 @@ union
 """
 
 # Replace with your Azure Key Vault URL
-key_vault_url = "https://finrem-slack-alerts-kv.vault.azure.net/"
+key_vault_url = "https://finrem-slack-alerts-prod.vault.azure.net/"
 
 # Authenticates using azure
 credential = DefaultAzureCredential()
