@@ -71,7 +71,7 @@ environment: staging
 Application: financial-remedy
 businessArea: CFT
 ExpiresAfter: 3000-01-01
-builtFrom:
+builtFrom: https://github.com/hmcts/finrem-slack-alerts
 ```
 
 ## Development
@@ -106,6 +106,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+```
 
 ### Run the function locally
 First start Azurite in another tab
