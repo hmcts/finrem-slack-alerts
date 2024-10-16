@@ -100,7 +100,7 @@ git clone https://github.com/hmcts/finrem-slack-alerts.git
 
 #### Install dependencies
 ```
-cd finrem-slack-alerts
+cd finrem-slack-alerts/alerts
 <optionally install a virtual environment using e.g. venv>
 python -m venv .venv
 source .venv/bin/activate
@@ -116,5 +116,6 @@ azurite --silent
 
 Run the function
 ```
+cd alerts
 func start
 ```
