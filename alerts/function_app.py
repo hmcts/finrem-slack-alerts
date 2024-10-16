@@ -11,8 +11,19 @@ import requests
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
-# Replace with your Azure Key Vault URL
-key_vault_url = "https://etslackalertkv.vault.azure.net/"
+# ApplicationInsights query
+query = """
+union
+    (app('finrem-prod').exceptions
+    | where timestamp > ago(5min)
+    | project timestamp, errorType = type, errorMessage = outerMessage, operation_Id),
+    (app('finrem-prod').traces
+    | where timestamp > ago(5min) and severityLevel == 3
+    | project timestamp, errorType = message, errorMessage = message, operation_Id)
+| order by timestamp desc
+"""
+
+key_vault_url = "https://finrem-slack-alerts.vault.azure.net/"
 
 # Authenticates using azure
 credential = DefaultAzureCredential()
@@ -58,26 +69,15 @@ def query_application_insights():
     url = f"https://api.applicationinsights.io/v1/apps/{app_id}/query"
     headers = {'x-api-key': api_key}
     data = {
-        "query": """union(
-    app('et-prod').exceptions
-    | where timestamp > ago(5min)
-    | project timestamp, errorType = type, errorMessage = outerMessage, operation_Id),
-(
-    app('et-prod').traces
-    | where timestamp > ago(5min) and severityLevel == 3
-    | project timestamp, errorType = message, errorMessage = message, operation_Id 
-)
-| order by timestamp desc"""
+        "query": query
     }
     response = requests.post(url, headers=headers, json=data)
-    logging.info(response.json())
     return response.json()
 
 
 # Function to get the table rows from the raw JSON response
 def get_rows_from_json(rows_as_json):
     list_of_rows = rows_as_json['tables'][0]['rows']
-    logging.info(list_of_rows)
     error_logs = [ErrorLog(*row + ['']) for row in list_of_rows]
     return error_logs
 
@@ -91,7 +91,7 @@ def unique_exceptions(all_exceptions):
 
     # Get the first error-causing operation
     for log in all_exceptions:
-        logging.info(log.operation_id)
+        # logging.info(log.operation_id)
         if log.operation_id not in unique_operations_read:
             unique_operations_read.append(log.operation_id)
             unique_logs.append(log)
@@ -122,7 +122,6 @@ def parametrise_query(operation_id):
 # Extremely ugly function to generate the Azure link to the logs for a given operation ID
 def generate_azure_link(tenant_id, subscription_id, resource_group, provider, component, operation_id):
     base_url = "https://portal.azure.com#@" + tenant_id
-    print(operation_id)
     resource_path = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/{provider}/components/{component}"
     compressed_query = compress_and_encode_query(parametrise_query(operation_id))
 
@@ -195,22 +194,26 @@ def build_error_table(rows):
 app = func.FunctionApp()
 
 
-@app.function_name(name="AzureTrigger")
-@app.schedule(schedule="*/5 * * * *", arg_name="AzureTrigger", run_on_startup=True)
-def trigger_function(AzureTrigger: func.TimerRequest) -> None:
+@app.function_name(name="AzureTimerTrigger")
+@app.schedule(schedule="*/5 * * * *", arg_name="AzureTimerTrigger", run_on_startup=False)
+def trigger_function(AzureTimerTrigger: func.TimerRequest) -> None:
+    logging.info("Starting...")
     query_data = query_application_insights()
     rows = get_rows_from_json(query_data)
     operation_ids = get_unique_operation_ids(rows)
-    logging.info(query_data)
-    if len(operation_ids) == 0:
-        logging.info("no events found")
+    num_operation_ids = len(operation_ids)
+    logging.info(f"{num_operation_ids} events found")
+    if num_operation_ids == 0:
         return
+    
     all_classes = unique_exceptions(rows)
     counts = get_counts(rows, operation_ids)
     error_data = build_error_table(all_classes)
     built_message = generate_message(error_data, counts)
+
     response_from_slack = requests.post(slack_webhook_url, json=built_message)
     if response_from_slack.raise_for_status() is not None:
         logging.error(response_from_slack.raise_for_status())
     logging.info(func.HttpResponse(f"{response_from_slack.status_code}, {response_from_slack.text}"))
+    
     return
