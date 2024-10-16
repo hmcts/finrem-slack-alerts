@@ -119,3 +119,11 @@ Run the function
 cd alerts
 func start
 ```
+
+## Deploy
+```
+cd alerts
+az login
+az account set --subscription "DCD-CFTAPPS-SBOX"
+func azure functionapp publish finrem-slack-alerts
+```
