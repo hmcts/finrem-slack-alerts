@@ -15,10 +15,10 @@ from azure.keyvault.secrets import SecretClient
 query = """
 union
     (app('finrem-prod').exceptions
-    | where timestamp > ago(2d)
+    | where timestamp > ago(5min)
     | project timestamp, errorType = type, errorMessage = outerMessage, operation_Id),
     (app('finrem-prod').traces
-    | where timestamp > ago(2d) and severityLevel == 3
+    | where timestamp > ago(5min) and severityLevel == 3
     | project timestamp, errorType = message, errorMessage = message, operation_Id)
 | order by timestamp desc
 """
@@ -72,14 +72,12 @@ def query_application_insights():
         "query": query
     }
     response = requests.post(url, headers=headers, json=data)
-    logging.info(response.json())
     return response.json()
 
 
 # Function to get the table rows from the raw JSON response
 def get_rows_from_json(rows_as_json):
     list_of_rows = rows_as_json['tables'][0]['rows']
-    logging.info(list_of_rows)
     error_logs = [ErrorLog(*row + ['']) for row in list_of_rows]
     return error_logs
 
@@ -93,7 +91,7 @@ def unique_exceptions(all_exceptions):
 
     # Get the first error-causing operation
     for log in all_exceptions:
-        logging.info(log.operation_id)
+        # logging.info(log.operation_id)
         if log.operation_id not in unique_operations_read:
             unique_operations_read.append(log.operation_id)
             unique_logs.append(log)
@@ -124,7 +122,6 @@ def parametrise_query(operation_id):
 # Extremely ugly function to generate the Azure link to the logs for a given operation ID
 def generate_azure_link(tenant_id, subscription_id, resource_group, provider, component, operation_id):
     base_url = "https://portal.azure.com#@" + tenant_id
-    print(operation_id)
     resource_path = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/{provider}/components/{component}"
     compressed_query = compress_and_encode_query(parametrise_query(operation_id))
 
@@ -197,9 +194,9 @@ def build_error_table(rows):
 app = func.FunctionApp()
 
 
-@app.function_name(name="AzureTrigger")
-@app.schedule(schedule="*/5 * * * *", arg_name="AzureTrigger", run_on_startup=False)
-def trigger_function(AzureTrigger: func.TimerRequest) -> None:
+@app.function_name(name="AzureTimerTrigger")
+@app.schedule(schedule="*/5 * * * *", arg_name="AzureTimerTrigger", run_on_startup=False)
+def trigger_function(AzureTimerTrigger: func.TimerRequest) -> None:
     logging.info("Starting...")
     query_data = query_application_insights()
     rows = get_rows_from_json(query_data)
@@ -213,7 +210,6 @@ def trigger_function(AzureTrigger: func.TimerRequest) -> None:
     counts = get_counts(rows, operation_ids)
     error_data = build_error_table(all_classes)
     built_message = generate_message(error_data, counts)
-    logging.info(built_message)
 
     response_from_slack = requests.post(slack_webhook_url, json=built_message)
     if response_from_slack.raise_for_status() is not None:
