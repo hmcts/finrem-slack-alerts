@@ -1,4 +1,4 @@
-# ET Slack Alerts
+# Financial Remedy Slack Alerts
 
 ### A serverless Azure Function for Application Insights monitoring and alerts
 
@@ -54,17 +54,36 @@ This function requires several environment variables (defined within the given k
 - `app-insights-resource-name` - The name of the Application Insights instance.
 - `subscription-id` - The subscription id that the Application Insights instance is stored within.
 
-## Installation
+## Development
 1. Clone the repository
 ```
-git clone https://github.com/hmcts/et-slack-alerts.git
+git clone https://github.com/hmcts/finrem-slack-alerts.git
 ```
 2. Open the folder and install dependencies
 ```
-cd [wherever you cloned it]
+cd finrem-slack-alerts
 <optionally install a virtual environment using e.g. venv>
+python -m venv .venv
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
+3. Start the function
+```
+func start
+```
+
+## Azure Deployment
+1. Create a resource group
+```
+az group create --name "finrem-slack-alerts" --location "uksouth"
+```
+2. Create a key vault
+```
+az keyvault create --name "finrem-slack-alerts" --resource-group "finrem-slack-alerts"
+```
+
+
 3. Follow the [instructions here](https://learn.microsoft.com/en-us/azure/azure-functions/functions-get-started?pivots=programming-language-python) to get it running locally and published to a given resource group. If you need any help, feel free to reach out.
 4. You will also need to ensure that the Function App has access to the Key Vault.
 - Assign a managed identity to your Function App.

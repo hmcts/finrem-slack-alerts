@@ -11,8 +11,19 @@ import requests
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
-# Replace with your Azure Key Vault URL
-key_vault_url = "https://etslackalertkv.vault.azure.net/"
+# ApplicationInsights query
+query = """
+union
+    (app('finrem-prod').exceptions
+    | where timestamp > ago(2d)
+    | project timestamp, errorType = type, errorMessage = outerMessage, operation_Id),
+    (app('finrem-prod').traces
+    | where timestamp > ago(2d) and severityLevel == 3
+    | project timestamp, errorType = message, errorMessage = message, operation_Id)
+| order by timestamp desc
+"""
+
+key_vault_url = "https://finrem-slack-alerts.vault.azure.net/"
 
 # Authenticates using azure
 credential = DefaultAzureCredential()
@@ -58,16 +69,7 @@ def query_application_insights():
     url = f"https://api.applicationinsights.io/v1/apps/{app_id}/query"
     headers = {'x-api-key': api_key}
     data = {
-        "query": """union(
-    app('et-prod').exceptions
-    | where timestamp > ago(5min)
-    | project timestamp, errorType = type, errorMessage = outerMessage, operation_Id),
-(
-    app('et-prod').traces
-    | where timestamp > ago(5min) and severityLevel == 3
-    | project timestamp, errorType = message, errorMessage = message, operation_Id 
-)
-| order by timestamp desc"""
+        "query": query
     }
     response = requests.post(url, headers=headers, json=data)
     logging.info(response.json())
@@ -196,21 +198,26 @@ app = func.FunctionApp()
 
 
 @app.function_name(name="AzureTrigger")
-@app.schedule(schedule="*/5 * * * *", arg_name="AzureTrigger", run_on_startup=True)
+@app.schedule(schedule="*/5 * * * *", arg_name="AzureTrigger", run_on_startup=False)
 def trigger_function(AzureTrigger: func.TimerRequest) -> None:
+    logging.info("Starting...")
     query_data = query_application_insights()
     rows = get_rows_from_json(query_data)
     operation_ids = get_unique_operation_ids(rows)
-    logging.info(query_data)
-    if len(operation_ids) == 0:
-        logging.info("no events found")
+    num_operation_ids = len(operation_ids)
+    logging.info(f"{num_operation_ids} events found")
+    if num_operation_ids == 0:
         return
+    
     all_classes = unique_exceptions(rows)
     counts = get_counts(rows, operation_ids)
     error_data = build_error_table(all_classes)
     built_message = generate_message(error_data, counts)
+    logging.info(built_message)
+
     response_from_slack = requests.post(slack_webhook_url, json=built_message)
     if response_from_slack.raise_for_status() is not None:
         logging.error(response_from_slack.raise_for_status())
     logging.info(func.HttpResponse(f"{response_from_slack.status_code}, {response_from_slack.text}"))
+    
     return
