@@ -195,7 +195,7 @@ app = func.FunctionApp()
 
 
 @app.function_name(name="AzureTimerTrigger")
-@app.schedule(schedule="*/5 * * * *", arg_name="AzureTimerTrigger", run_on_startup=False)
+@app.schedule(schedule="0 */5 * * * *", arg_name="AzureTimerTrigger", run_on_startup=False)
 def trigger_function(AzureTimerTrigger: func.TimerRequest) -> None:
     logging.info("Starting...")
     query_data = query_application_insights()
