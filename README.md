@@ -56,6 +56,16 @@ pip install -r requirements.txt
 - Select the `Monitoring Reader` role and assign it to your Function App's managed identity.
     - This allows the function to query Application Insights using Azure AD authentication.
 
+## Deployment
+
+To deploy the function to Azure:
+
+```bash
+# From the alerts directory
+cd alerts
+func azure functionapp publish <your-function-app-name>
+```
+
 ## Azure Installation
 ### Create Azure resources
 ```
