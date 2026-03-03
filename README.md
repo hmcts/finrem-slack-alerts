@@ -10,7 +10,7 @@ This is a timer-trigger based Azure Function App written in Python to monitor an
 ### Functionality
 The function is scheduled to run every 5 minutes (customisable) and performs the following tasks:
 - Authenticates with an Azure Key Vault to retrieve relevant environment variables.
-- Queries application insights to capture all log entries returned for a given query and timescale (both customisable).
+- Queries Application Insights (via Azure AD authentication and managed identity) to capture all log entries returned for a given query and timescale.
 - Filters unique operations (some log entries cover multiple operations, which can clutter up the returned logs.)
 - Sends a second query to application insights to get the entire log history of a given operation.
 - Builds a slack message containing a formatted table of unique event triggering operations in the given timeframe, with generated inline links to the relevant log histories.
@@ -27,13 +27,44 @@ The function is scheduled to run every 5 minutes (customisable) and performs the
 
 ## Environment Variables
 This function requires several environment variables (defined within the given keyvault)
-- `api-key` - An API key for your given app insights instance. You can obtain one of these via the `API Access` section in the left hand side navigation of your Application Insights instance.
-- `app-id` - The 'Instrumentation Key' of the Application Insights instance. This can be found in the top part of the Overview section.
+- `app-insights-workspace-id` - The workspace ID of the Application Insights instance. This can be found in the Properties section of your Application Insights resource.
 - `slack-webhook-url` - A slack webhook URL for you to send messages to. For this part you will likely need to contact myself (@Danny on Slack) or a Slack administrator to get a custom slack 'app' set up. This is much more trivial than it sounds, a few clicks at most.
 - `tenant-id` - Standard for the entire organisation.
 - `resource-group-name` - The resource group name that the Application Insights instance is stored within.
 - `app-insights-resource-name` - The name of the Application Insights instance.
 - `subscription-id` - The subscription id that the Application Insights instance is stored within.
+
+**Note:** This application uses Azure AD authentication via managed identity to query Application Insights. API keys are deprecated and will be retired by March 31, 2026.
+
+## Installation
+1. Clone the repository
+```
+git clone https://github.com/hmcts/finrem-slack-alerts.git
+```
+2. Open the folder and install dependencies
+```
+cd [wherever you cloned it]
+<optionally install a virtual environment using e.g. venv>
+pip install -r requirements.txt
+```
+3. Follow the [instructions here](https://learn.microsoft.com/en-us/azure/azure-functions/functions-get-started?pivots=programming-language-python) to get it running locally and published to a given resource group. If you need any help, feel free to reach out.
+4. You will also need to ensure that the Function App has the proper access:
+- Assign a managed identity to your Function App.
+- Navigate to `Key Vault` -> `Access Policies` -> `Add Access Policy`. Select `Get` for secrets.
+- For `Select principal`, choose your Function App's identity.
+- Navigate to your Application Insights resource -> `Access Control (IAM)` -> `Add role assignment`.
+- Select the `Monitoring Reader` role and assign it to your Function App's managed identity.
+    - This allows the function to query Application Insights using Azure AD authentication.
+
+## Deployment
+
+To deploy the function to Azure:
+
+```bash
+# From the alerts directory
+cd alerts
+func azure functionapp publish <your-function-app-name>
+```
 
 ## Azure Installation
 ### Create Azure resources

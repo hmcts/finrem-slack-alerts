@@ -10,6 +10,7 @@ from io import BytesIO
 import requests
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+from azure.monitor.query import LogsQueryClient, LogsQueryStatus
 
 # ApplicationInsights query
 query = """
@@ -31,10 +32,12 @@ credential = DefaultAzureCredential()
 # Create a SecretClient to interact with the Azure Key Vault
 secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
 
+# Create a LogsQueryClient for Application Insights queries using Azure AD auth
+logs_client = LogsQueryClient(credential)
+
 # Get secrets from Azure Key Vault
 try:
-    api_key = secret_client.get_secret('api-key').value
-    app_id = secret_client.get_secret('app-id').value
+    workspace_id = secret_client.get_secret('app-insights-workspace-id').value
     slack_webhook_url = secret_client.get_secret('slack-webhook-url').value
     tenant_id = secret_client.get_secret('tenant-id').value
     resource_group_name = secret_client.get_secret('resource-group-name').value
@@ -64,15 +67,50 @@ class ErrorLog:
         }
 
 
-# Function to query Application Insights
+# Function to query Application Insights using Azure AD authentication
 def query_application_insights():
-    url = f"https://api.applicationinsights.io/v1/apps/{app_id}/query"
-    headers = {'x-api-key': api_key}
-    data = {
-        "query": query
-    }
-    response = requests.post(url, headers=headers, json=data)
-    return response.json()
+    query = """union(
+    app('finrem-prod').exceptions
+    | where timestamp > ago(5min)
+    | where not (outerMessage has 'invalid csrf token' and operation_Name == 'POST /dynatraceSyntheticBeaconEndpoint')
+    | project timestamp, errorType = type, errorMessage = outerMessage, operation_Id),
+(
+    app('finrem-prod').traces
+    | where timestamp > ago(5min) and severityLevel == 3
+    | where not (message has 'invalid csrf token' and operation_Name == 'POST /dynatraceSyntheticBeaconEndpoint')
+    | project timestamp, errorType = message, errorMessage = message, operation_Id
+)
+| order by timestamp desc"""
+
+    try:
+        response = logs_client.query_workspace(
+            workspace_id=workspace_id,
+            query=query,
+            timespan=timedelta(minutes=5)
+        )
+
+        if response.status == LogsQueryStatus.SUCCESS:
+            # Convert the response to match the old format
+            result = {
+                'tables': [{
+                    'rows': []
+                }]
+            }
+
+            # Extract rows from the response
+            if response.tables:
+                table = response.tables[0]
+                for row in table.rows:
+                    result['tables'][0]['rows'].append(list(row))
+
+            logging.info(result)
+            return result
+        else:
+            logging.error(f"Query failed with status: {response.status}")
+            return {'tables': [{'rows': []}]}
+    except Exception as e:
+        logging.error(f"Error querying Application Insights: {e}")
+        return {'tables': [{'rows': []}]}
 
 
 # Function to get the table rows from the raw JSON response
